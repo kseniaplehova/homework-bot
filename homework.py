@@ -8,6 +8,8 @@ import requests
 from dotenv import load_dotenv
 from telebot import TeleBot
 
+from exceptions import APIResponseError, JSONDecodeError
+
 load_dotenv()
 
 PRACTICUM_TOKEN = os.getenv("PRACTICUM_TOKEN")
@@ -30,20 +32,32 @@ logging.basicConfig(
     handlers=[logging.StreamHandler(sys.stdout)],
 )
 
+logger = logging.getLogger(__name__)
+
 
 def check_tokens():
     """Проверяет доступность переменных окружения."""
-    return all([PRACTICUM_TOKEN, TELEGRAM_TOKEN, TELEGRAM_CHAT_ID])
+    tokens = {
+        "PRACTICUM_TOKEN": PRACTICUM_TOKEN,
+        "TELEGRAM_TOKEN": TELEGRAM_TOKEN,
+        "TELEGRAM_CHAT_ID": TELEGRAM_CHAT_ID,
+    }
+    missing_tokens = [name for name, val in tokens.items() if not val]
+    return missing_tokens
 
 
 def send_message(bot, message):
     """Отправляет сообщение в Telegram-чат."""
     try:
-        logging.info(f"Начало отправки сообщения: {message}")
+        logger.info("Начало отправки сообщения: %s", message)
         bot.send_message(chat_id=TELEGRAM_CHAT_ID, text=message)
-        logging.debug(f"Сообщение успешно отправлено в Telegram: {message}")
+        logger.debug(
+            "Сообщение успешно отправлено в Telegram: %s", message
+        )
     except Exception as error:
-        logging.error(f"Ошибка при отправке сообщения в Telegram: {error}")
+        logger.error(
+            "Ошибка при отправке сообщения в Telegram: %s", error
+        )
 
 
 def get_api_answer(timestamp):
@@ -52,14 +66,18 @@ def get_api_answer(timestamp):
     try:
         response = requests.get(ENDPOINT, headers=HEADERS, params=payload)
     except requests.RequestException as error:
-        raise Exception(f"Ошибка при запросе к API: {error}")
+        raise APIResponseError(f"Ошибка при запросе к API: {error}")
 
     if response.status_code != HTTPStatus.OK:
-        raise Exception(
-            f"Эндпоинт {ENDPOINT} недоступен. Код ответа: {
-                response.status_code}")
+        raise APIResponseError(
+            f"Эндпоинт {ENDPOINT} недоступен. "
+            f"Код ответа: {response.status_code}"
+        )
 
-    return response.json()
+    try:
+        return response.json()
+    except Exception as error:
+        raise JSONDecodeError(f"Ошибка декодирования JSON: {error}")
 
 
 def check_response(response):
@@ -68,6 +86,7 @@ def check_response(response):
         raise TypeError("Ответ API не является словарем")
     if "homeworks" not in response:
         raise KeyError('В ответе API отсутствует ключ "homeworks"')
+
     homeworks = response.get("homeworks")
 
     if not isinstance(homeworks, list):
@@ -95,9 +114,14 @@ def parse_status(homework):
 
 def main():
     """Основная логика работы бота."""
-    if not check_tokens():
-        logging.critical("Отсутствуют обязательные переменные окружения!")
-        sys.exit("Отсутствуют обязательные переменные окружения!")
+    missing_tokens = check_tokens()
+    if missing_tokens:
+        message = (
+            "Отсутствуют обязательные переменные окружения: "
+            f"{', '.join(missing_tokens)}"
+        )
+        logger.critical(message)
+        sys.exit(message)
 
     bot = TeleBot(token=TELEGRAM_TOKEN)
     timestamp = int(time.time())
@@ -111,12 +135,12 @@ def main():
                 message = parse_status(homeworks[0])
                 send_message(bot, message)
             else:
-                logging.debug("Статус домашних работ не изменился.")
+                logger.debug("Статус домашних работ не изменился.")
             timestamp = response.get("current_date", timestamp)
 
         except Exception as error:
             message = f"Сбой в работе программы: {error}"
-            logging.error(message)
+            logger.error("%s", message)
             if message != last_error_message:
                 send_message(bot, message)
                 last_error_message = message
