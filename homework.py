@@ -42,8 +42,7 @@ def check_tokens():
         "TELEGRAM_TOKEN": TELEGRAM_TOKEN,
         "TELEGRAM_CHAT_ID": TELEGRAM_CHAT_ID,
     }
-    missing_tokens = [name for name, val in tokens.items() if not val]
-    return missing_tokens
+    return [name for name, val in tokens.items() if not val]
 
 
 def send_message(bot, message):
@@ -51,20 +50,20 @@ def send_message(bot, message):
     try:
         logger.info("Начало отправки сообщения: %s", message)
         bot.send_message(chat_id=TELEGRAM_CHAT_ID, text=message)
-        logger.debug(
-            "Сообщение успешно отправлено в Telegram: %s", message
-        )
+        logger.debug("Сообщение успешно отправлено в Telegram: %s", message)
     except Exception as error:
-        logger.error(
-            "Ошибка при отправке сообщения в Telegram: %s", error
-        )
+        logger.error("Ошибка при отправке сообщения в Telegram: %s", error)
 
 
 def get_api_answer(timestamp):
     """Делает запрос к эндпоинту API-сервиса."""
     payload = {"from_date": timestamp}
     try:
-        response = requests.get(ENDPOINT, headers=HEADERS, params=payload)
+        response = requests.get(
+            ENDPOINT,
+            headers=HEADERS,
+            params=payload,
+        )
     except requests.RequestException as error:
         raise APIResponseError(f"Ошибка при запросе к API: {error}")
 
@@ -114,8 +113,7 @@ def parse_status(homework):
 
 def main():
     """Основная логика работы бота."""
-    missing_tokens = check_tokens()
-    if missing_tokens:
+    if missing_tokens := check_tokens():
         message = (
             "Отсутствуют обязательные переменные окружения: "
             f"{', '.join(missing_tokens)}"
